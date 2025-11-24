@@ -203,6 +203,9 @@ class Parser:
 
         return parsed_dict
     
+#TODO: Create ChordNote class that includes a string representation of the object to work with it in the transition matrix
+#TODO: 
+    
 
 if __name__ == "__main__":
     # parser = Parser("Data/Nocturne_in_E_flat_Major_Op.9_No.2_Easy.mxl")
