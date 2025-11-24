@@ -1,0 +1,9 @@
+#*Venvs
+.venv/
+
+#*xml and zip files in Data/
+Data/*.xml
+Data/*.zip
+
+#*pychache files
+*__pycache__/
