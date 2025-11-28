@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcmg"
+version = "0.1.0"
+description = "Library for building an instrument based on a Markov Chain from scratch."
+authors = [
+    {name = "Juan Sebastián Rueda Segura", email = "jsruedase@unal.edu.co"},
+    {name = "Sara Sofía Rivera Sanabria", email = "sariveras@unal.edu.co"},
+    {name = "Santiago Rocha Pachón", email = "srochap@unal.edu.co"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "lib"}
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.8",
+]

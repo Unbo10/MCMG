@@ -4,14 +4,18 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import zipfile
 
+from .event import Event
+from .note import Note
+
 class Parser:
     def __init__(self, file_name: str):
         self.file_name = file_name
         self.score_file = None
         
         self.parsed_dict: dict = {}
-        self.type_to_float: dict = {
-            "breve": Fraction(2, 1), #*to avoid rounding issues
+        #!We may want to move this dicts to another object
+        self.type_to_frac: dict = {
+            "breve": Fraction(2, 1),
             "whole": Fraction(1, 1),
             "half": Fraction(1, 2),
             "quarter": Fraction(1, 4),
@@ -82,37 +86,16 @@ class Parser:
 
     def parse_to_list(self) -> dict:
         """
-        Parses self's `source_file` (if not found, calls `mxl_to_xml`), into a
-        dictionary whose keys will be the instruments with which each part is
-        played, and its items, lists of a list and a tuple: the list will contain
-        a tuple (if it is a note) or multiple tuples with three strings (if it
-        is a chord):
-
-        (clef, note_name, accidental, octave, articulation)
-
-        - clef will be a tuple (note_name, octave (?)) that depends on the notes'
-        measure.
-        - note_name will be a string from A to G or R to represent rest.
-        - accidental will be '' if natural, '#' if sharp, 'b' if flat, 'x' if
-        double-sharp, or 'bb' if double-flat.
-        - octave will be a number representing the scale in which the note
-        is played (?)
-        - articulation refers to particular ways a note may be played
-
-        on the other hand, the tuple will contain two strings:
-
-        (type, duration)
-
-        - type will be the inverse of a non-negative power of 2 up to the
-        inverse of 2^6 = 64 (so from 1 to 1/64).
-        - duration will be the length of the note depending on the melody's
-        beats (?).
+        Parses self's score into a dictionary whose keys are instruments and
+        whose values are dictionaries keyed by staff number. Each staff maps to
+        a list of `Event` instances, and each `Event` carries the one or many
+        `Note` objects that sounded simultaneously plus their rhythmic info.
         """
         #! The duration may not be necessary if we store the divisions tag from the attributes of each part
         #TODO: Get tempo
         if self.score_file is None:
             self.mxl_to_xml()
-        parsed_dict: str = {}
+        parsed_dict: dict = {}
         #*1) Set the score-partwise tag as root
         root = ET.parse(self.score_file).getroot()
         
@@ -127,84 +110,89 @@ class Parser:
 
         #*3) Get each part's info
         parts = root.findall('part')
-        is_chord: bool = False
-        clefs: list = {}
         for part in parts:
-            id: str = part.get('id')
-            inst: str = p_to_inst[id]
+            part_id: str = part.get('id')
+            inst: str = p_to_inst[part_id]
             print("Instrument:", inst)
-            staves = part.find('measure/attributes/staves')
-            # print("Staves:", staves.text)
-            if staves is not None:
-                parsed_dict[inst] = {str(staff): [] for staff in range(1, int(staves.text)+1)}
-            else:
-                parsed_dict[inst] = {'1': []}
-                # raise ValueError("Unsupported: there must be at least two staves in the file")
 
-            print(parsed_dict)
-            print("Measures:", list(part.find('measure')))
+            #*Count staves of the first measure
+            first_measure = part.find('measure')
+            staves_count = 1
+            if first_measure is not None:
+                staves_tag = first_measure.find('attributes/staves')
+                if staves_tag is not None and staves_tag.text:
+                    staves_count = int(staves_tag.text)
+            parsed_dict[inst] = {str(staff): [] for staff in range(1, staves_count + 1)}
+
+            clefs: dict = {}
+
+            #TODO: Document the rest of the code
+            def build_note(note_element: ET.Element, staff_id: str) -> Note:
+                clef = clefs.get(staff_id)
+                # if clef is None:
+                #     raise ValueError(f"Clef not defined for staff {staff_id} in instrument {inst}")
+                if note_element.find('rest') is not None:
+                    return Note(clef, 'R', '', '', tuple())
+
+                pitch = note_element.find('pitch')
+                if pitch is None:
+                    raise ValueError("Note without pitch encountered")
+                note_name = pitch.findtext('step')
+                octave = pitch.findtext('octave', '')
+                alter = pitch.findtext('alter')
+                alter_val = int(alter) if alter is not None else None
+                accidental = self.alter_to_acc.get(alter_val, '')
+                if note_name is None:
+                    raise ValueError("Pitch step missing in note")
+
+                if note_element.find('notations/articulations') is not None:
+                    articulations = tuple(
+                        artic.tag for artic in note_element.findall('notations/articulations/*')
+                    )
+                else:
+                    articulations = tuple()
+
+                return Note(clef, note_name, accidental, octave, articulations)
+
             for measure in part.findall('measure'):
-                if measure.find('attributes/clef') is not None:
-                    for clef in measure.findall('attributes/clef'):
-                        clefs[clef.get('number')] = (clef.find('sign').text, int(clef.find('line').text))
+                attributes = measure.find('attributes')
+                #*Update the cleff if a measure has a different one
+                if attributes is not None:
+                    for clef in attributes.findall('clef'):
+                        clef_number = clef.get('number', '1')
+                        clefs[clef_number] = (clef.find('sign').text, int(clef.find('line').text))
                     print("Clefs:", clefs)
 
                 notes = list(measure.findall('note'))
                 i: int = 0
-                j: int = 0
                 while i < len(notes):
-                    note = notes[i]
-
-                    type = self.type_to_float[note.find('type').text]
-                    # print(note.attrib)
-                    try:
-                        duration = note.find('duration').text
-                    except: #*grace note
-                        duration = None
-                    # print(type, duration)
-                    staff = note.find('staff').text if note.find('staff') is not None else "1"
-                    if note.find('rest') is not None:
-                        parsed_dict[inst][staff].append([[(clefs[staff], 'R', '', '', '')], (type, duration)])
+                    note_element = notes[i]
+                    type_tag = note_element.find('type')
+                    if type_tag is None or type_tag.text not in self.type_to_frac:
                         i += 1
-                    else:
-                        try:
-                            alter = int(note.find('pitch/alter').text)
-                        except:
-                            alter = None
-                        try:
-                            note_name = note.find('pitch/step').text
-                        except:
-                            #!Weird error
-                            continue
-                        octave = note.find('pitch/octave').text
-                        if note.find('notations/articulations') is not None:
-                            articulations = []
-                            # print("Articulations:", note.findall('notations/articulations/*')[0].tag)
-                            for artic in note.findall('notations/articulations/*'):
-                                articulations.append(artic.tag)
-                        else:
-                            articulations = ['']
+                        continue
+                    note_type = self.type_to_frac[type_tag.text]
+                    duration = note_element.findtext('duration')
+                    staff = note_element.findtext('staff', '1')
 
-                        #*Check if it is a chord
-                        if note.find('chord') is not None:
-                            is_chord = True
-                        else:
-                            is_chord = False
+                    staff_events = parsed_dict[inst][staff]
+                    note_list = [build_note(note_element, staff)]
 
-                        if is_chord:
-                            #*Add the note, with the same duration and type as the first of the chord, to the lists of notes of the chord
-                            staff_length = len(parsed_dict[inst][staff])
-                            parsed_dict[inst][staff][staff_length - 1][0].append((clefs[staff], note_name, self.alter_to_acc[alter], octave, articulations))
-                        else:
-                            #*Add a new note
-                            parsed_dict[inst][staff].append([[(clefs[staff], note_name, self.alter_to_acc[alter], octave, articulations)], (type, duration)])
+                    if note_element.find('rest') is not None:
+                        staff_events.append(Event(note_list, (note_type, duration)))
+                        i += 1
+                        continue
 
-                    i += 1
+                    j = i + 1
+                    while j < len(notes) and notes[j].find('chord') is not None:
+                        chord_staff = notes[j].findtext('staff', staff)
+                        note_list.append(build_note(notes[j], chord_staff))
+                        j += 1
+
+                    staff_events.append(Event(note_list, (note_type, duration)))
+                    i = j
 
         return parsed_dict
-    
-#TODO: Create ChordNote class that includes a string representation of the object to work with it in the transition matrix
-#TODO: 
     
 
 if __name__ == "__main__":

@@ -7,3 +7,16 @@ Data/*.zip
 
 #*pychache files
 *__pycache__/
+
+#*Python build artifacts
+build/
+dist/
+*.egg-info/
+
+#*Tool caches
+.mypy_cache/
+.pytest_cache/
+
+#*Editor/OS cruft
+.DS_Store
+.idea/
