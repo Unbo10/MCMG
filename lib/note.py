@@ -50,6 +50,7 @@ class Note:
                 self.repr_str = repr_str
         return self.repr_str
         
+#TODO: Create a constructor using a string
 if __name__ == "__main__":
     #!Run (from root) as python -m lib.note
     silence = Note(('F', 4), 'R', '', '', '')

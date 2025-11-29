@@ -15,7 +15,7 @@ class Parser:
         self.parsed_dict: dict = {}
         #!We may want to move this dicts to another object
         self.type_to_frac: dict = {
-            "breve": Fraction(2, 1),
+            "breve": Fraction(2, 1), #*To avoid rounding issues
             "whole": Fraction(1, 1),
             "half": Fraction(1, 2),
             "quarter": Fraction(1, 4),
@@ -83,7 +83,6 @@ class Parser:
                     target.write(source.read()) #*write source.xml into prefix_source.xml
                 self.score_file = f'Data/{prefix}_source.xml'
             
-
     def parse_to_list(self) -> dict:
         """
         Parses self's score into a dictionary whose keys are instruments and
@@ -202,6 +201,9 @@ if __name__ == "__main__":
     parser.mxl_to_xml(save_container=False)
     lst = parser.parse_to_list()
     print(lst['Piano']['2'])
+    print("Parsed dict keys")
+    for key, elem in lst.items():
+        print(key)
 
 
         

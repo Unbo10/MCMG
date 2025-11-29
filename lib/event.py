@@ -52,6 +52,7 @@ class Event:
         
         return self.repr_str
     
+#TODO: Create a constructor using a string
 if __name__ == "__main__":
     #!Run (from root) as python -m lib.event
     event1 = Event(notes=[Note(('F', 4), 'R', '', '', '')], timing=(Fraction(1, 2), '4'))
