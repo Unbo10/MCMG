@@ -79,10 +79,9 @@ class Instrument:
             self.build_tm()
         #TODO: Implement a method that puts a 1 in a given event's string if present on unique_events
         if init_method == "random":
-            #!For now, it is a list of strings, but once the constructor of Event from a str is built, should be refactored to be a list of strings. This is a must before playing it using Midi.
-            configs: list[str] = []
+            configs: list[Event] = []
             rand_num: int = random.randint(0, len(self.tm) - 1)
-            configs.append(self.tm.index[rand_num])
+            configs.append(Event.from_string(self.tm.index[rand_num]))
         
             #*Build a mapping note -> notes to which it has a probability > 0
             #*to go to
@@ -95,12 +94,12 @@ class Instrument:
 
             for n in range(n_simulations):
                 rand_u: float = random.random()
-                config_len: int = len(note_mapping[configs[len(configs) - 1]]) #*number of notes it can transition to
+                config_len: int = len(note_mapping[str(configs[len(configs) - 1])]) #*number of notes it can transition to
                 for i in range(1, config_len + 1):
-                    print(note_mapping[configs[len(configs) - 1]])
+                    # print(note_mapping[str(configs[len(configs) - 1])])
                     if rand_u < i/config_len:
                         i -= 1 #*explain in depth in the document (a.k.a., make the update function explicit)
-                        configs.append(note_mapping[configs[len(configs) - 1]][i]) 
+                        configs.append(Event.from_string(note_mapping[str(configs[len(configs) - 1])][i])) 
                         break
 
             return configs

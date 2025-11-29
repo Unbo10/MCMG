@@ -43,19 +43,46 @@ class Event:
 
     def __repr__(self) -> str:
         if self.repr_str is None:
-            repr_str: str = ""
-            for note in self.notes:
-                repr_str += str(note) + ">"
-            # repr_str = repr_str[:-1] #*keep the last > to distinguish between notes and timing
-            repr_str += f">{self.type.numerator}/{self.type.denominator}|{self.duration}"
-            self.repr_str = repr_str
-        
+            notes_repr = ">".join(str(note) for note in self.notes)
+            self.repr_str = f"{notes_repr}>>{self.type.numerator}/{self.type.denominator}|{self.duration}"
         return self.repr_str
-    
-#TODO: Create a constructor using a string
+
+    @classmethod
+    def from_string(cls, event_str: str) -> "Event":
+        """
+        From a string that follows the format s1>s2>...>sn>>type|duration,
+        where si is a string of the format
+        
+        (note_name,octave)note_name,accidental,octave|articulations
+
+        without the commas. The first parenthesis contains info about the clef,
+        and articulations are separated by commas if there are multiple.
+        """
+        notes_part, sep, timing_part = event_str.rpartition(">>")
+        if sep == "":
+            raise ValueError(f"Invalid event string: {event_str}")
+
+        #*Get notes separated by >
+        note_strings = [n for n in notes_part.split(">") if n]
+        if not note_strings:
+            raise ValueError(f"No notes found in event string: {event_str}")
+        notes = [Note.from_string(ns) for ns in note_strings]
+
+        #*The symbol | marks the start of the articulations (if there are any)
+        frac_part, sep, duration_part = timing_part.partition("|")
+        if sep == "":
+            raise ValueError(f"Invalid timing in event string: {event_str}")
+        note_type = Fraction(frac_part)
+        duration = duration_part if duration_part != "None" else None
+
+        return cls(notes, (note_type, duration))
+
+
 if __name__ == "__main__":
     #!Run (from root) as python -m lib.event
     event1 = Event(notes=[Note(('F', 4), 'R', '', '', '')], timing=(Fraction(1, 2), '4'))
     event2 = Event(notes=[Note(('F', 4), 'G', '#', '3', ['staccato']), Note(('F', 4), 'B', '', '3', [''])], timing=(Fraction(1, 8), '1'))
     print(event1)
+    print(Event.from_string(str(event1)))
     print(event2)
+    print(Event.from_string(str(event2)))

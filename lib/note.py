@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Sequence, Tuple
+from typing import Tuple
 
 """
 Immutable class that represents a single parsed note/rest from `Parser`'s
@@ -39,16 +39,60 @@ class Note:
             self.articulations == value.articulations
         )
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.repr_str is None:
-            repr_str: str = f"({self.clef[0]},{self.clef[1]}){self.name}{self.accidental}{self.octave}|"
-            if len(self.articulations) > 0:
-                for articulation in self.articulations:
-                    repr_str += articulation + ","
-                    self.repr_str = repr_str[:-1] #*eliminate the last comma
-            else:
-                self.repr_str = repr_str
+            base = f"({self.clef[0]},{self.clef[1]}){self.name}{self.accidental}{self.octave}|"
+            if self.articulations:
+                base += ",".join(self.articulations)
+            self.repr_str = base
         return self.repr_str
+
+    @classmethod
+    def from_string(cls, note_str: str) -> "Note":
+        """
+        From a string that follows the format
+        
+        (note_name,octave)note_name,accidental,octave|articulations
+
+        without the commas. The first parenthesis contains info about the clef,
+        and articulations are separated by commas if there are multiple.
+        """
+        if not note_str:
+            raise ValueError("Empty note string")
+
+        #*Get the info about the clef (inside parenthesis)
+        clef_part, sep, remainder = note_str.partition(')')
+        if sep == '':
+            raise ValueError(f"Invalid note string: {note_str}")
+        clef_content = clef_part.lstrip('(')
+        clef_sign, clef_line = clef_content.split(',')
+        clef = (clef_sign, int(clef_line))
+
+        pitch_part, sep, articulation_part = remainder.partition('|')
+        if sep == '':
+            raise ValueError(f"Invalid note string: {note_str}")
+
+        if not pitch_part:
+            raise ValueError(f"Missing pitch info in note string: {note_str}")
+
+        name = pitch_part[0]
+        accidental = ''
+        octave = pitch_part[1:]
+
+        #*This follows the conventions in Parser
+        #*The octave and the note name are gauranteed to be a single character
+        #*so the rest is the accidental (will remain empty if there isn't)
+        if name != 'R':
+            if octave.startswith('bb'):
+                accidental = 'bb'
+                octave = octave[2:]
+            elif octave.startswith(('x', '#', 'b')):
+                accidental = octave[0]
+                octave = octave[1:]
+
+        #*Get the articulations separated by commas
+        articulations = tuple(filter(None, articulation_part.split(','))) if articulation_part else tuple()
+        return cls(clef, name, accidental, octave, articulations)
         
 #TODO: Create a constructor using a string
 if __name__ == "__main__":
@@ -59,4 +103,3 @@ if __name__ == "__main__":
     print("Is silence silence?:", silence.is_rest)
     print("Note:", note)
     print("Is note silence?", note.is_rest)
-
