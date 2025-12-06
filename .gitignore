@@ -20,3 +20,7 @@ dist/
 #*Editor/OS cruft
 .DS_Store
 .idea/
+
+#*Ouput and transition matrices
+output/
+tms/

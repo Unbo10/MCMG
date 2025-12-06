@@ -10,7 +10,7 @@ from .note import Note
 class Parser:
     def __init__(self, file_name: str):
         self.file_name = file_name
-        self.score_file = None
+        self.score_file = file_name if file_name.endswith('xml') else None
         
         self.parsed_dict: dict = {}
         #!We may want to move this dicts to another object
@@ -83,7 +83,7 @@ class Parser:
                     target.write(source.read()) #*write source.xml into prefix_source.xml
                 self.score_file = f'Data/{prefix}_source.xml'
             
-    def parse_to_list(self) -> dict:
+    def parse_to_dict(self) -> dict:
         """
         Parses self's score into a dictionary whose keys are instruments and
         whose values are dictionaries keyed by staff number. Each staff maps to
@@ -105,7 +105,19 @@ class Parser:
             p_to_inst[part.get('id')] = part.find('part-name').text
 
         for pid, inst in p_to_inst.items():
+            #TODO: Consider the case when there are multiple instruments of the same type
+            # if inst in parsed_dict.keys():
+            #     inst += '1'
             parsed_dict[inst] = None #*create the dictionary of staves for each instrument
+
+        #*4) Get general info (divisions and tempo)
+        info_measure = root.find('part/measure')
+        n_divisions: int = int(info_measure.find('attributes/divisions').text)
+        try:
+            tempo: int = int(float(info_measure.find('direction/sound').get('tempo')))
+        except TypeError: #*Instead of having the tempo attribute, some files may have 'dynamics'
+            tempo: int = int(float(info_measure.find('direction/sound').get('dynamics')))
+        parsed_dict['Info'] = [n_divisions, tempo]
 
         #*3) Get each part's info
         parts = root.findall('part')
@@ -199,11 +211,12 @@ if __name__ == "__main__":
     parser = Parser("Data/Bella_Ciao.mxl")
     print(parser.score_file)
     parser.mxl_to_xml(save_container=False)
-    lst = parser.parse_to_list()
-    print(lst['Piano']['2'])
-    print("Parsed dict keys")
-    for key, elem in lst.items():
-        print(key)
+    lst = parser.parse_to_dict()
+    # print(lst['Piano']['2'])
+    # print("Parsed dict keys")
+    # for key, elem in lst.items():
+        # print(key)
+    print("Info:", lst['Info'])
 
 
         

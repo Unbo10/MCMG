@@ -4,7 +4,7 @@ from typing import Tuple
 
 """
 Immutable class that represents a single parsed note/rest from `Parser`'s
-`parse_to_list`. It contains all the info from a note except its timing:
+`parse_to_dict`. It contains all the info from a note except its timing:
 - its clef (as a tuple (note, line or octave))
 - its name (A to G or R).
 - its accidental (see `Parser`'s `alter_to_acc`)
@@ -93,6 +93,41 @@ class Note:
         #*Get the articulations separated by commas
         articulations = tuple(filter(None, articulation_part.split(','))) if articulation_part else tuple()
         return cls(clef, name, accidental, octave, articulations)
+
+    def to_midi_number(self) -> int | None:
+        """
+        Mapping from Note to the associated Midi's number.
+        """
+        if self.is_rest:
+            return None
+
+        note_base = {
+            "C": 0,
+            "D": 2,
+            "E": 4,
+            "F": 5,
+            "G": 7,
+            "A": 9,
+            "B": 11,
+        }
+        accidental_map = {
+            "": 0,
+            "#": 1,
+            "b": -1,
+            "x": 2,
+            "bb": -2,
+        }
+
+        if self.name not in note_base:
+            raise ValueError(f"Unsupported note name: {self.name}")
+        if self.accidental not in accidental_map:
+            raise ValueError(f"Unsupported accidental: {self.accidental}")
+        if self.octave == "":
+            raise ValueError("Missing octave for pitched note")
+
+        semitone = note_base[self.name] + accidental_map[self.accidental]
+        midi_number = (int(self.octave) + 1) * 12 + semitone #*add one to start from the 0th octave
+        return midi_number
         
 #TODO: Create a constructor using a string
 if __name__ == "__main__":
