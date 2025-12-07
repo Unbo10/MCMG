@@ -4,6 +4,7 @@ import pandas as pd
 from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo
 
 from .event import Event
+from .utils import GM_PROGRAMS
 
 """
 A musical instrument based on an n-th Markov chain built using one or multiple musical pieces.
@@ -35,26 +36,31 @@ class Instrument:
             raise ValueError("This instance's voice must be a list of at least one valid element, but it is empty")
 
         unique_events_str: set[str] = set()
-        voices: list[list[Event]] = []
+        voices_dict: dict = {} #*dictionary of each voice's events
         #*1)Traverse through each instrument, each voice and each event to get the unique events
         for parsed_dict in self.parsed_mxls:
+            #!Assumes one instrument
             for key, inst_dict in parsed_dict.items():
                 if key != 'Info':
+                    min_voice_length: int = len(inst_dict[str(self.voices[0])])
+                    #*Store the list of events for each voice (staff)
                     for voice in self.voices:
                         try:
-                            voice: list[Event] = inst_dict[str(voice)] #*get the list of events for each voice (staff)
+                            voices_dict[voice] += inst_dict[str(voice)]
                         except KeyError:
-                            print(f"Voice {voice} not in this parsed mxl's instrument keys: {list(inst_dict.keys())}. Aborting")
-                            return
+                            voices_dict[voice] = inst_dict[str(voice)]
+                            # print(f"Voice {voice} not in this parsed mxl's instrument keys: {list(inst_dict.keys())}. Aborting")
+                    for voice, voice_list in voices_dict.items():
+                        # print(len(inst_dict[str(voice)]))
+                        min_voice_length = min(min_voice_length, len(inst_dict[str(voice)]))
 
                     #*1.1)Joining events from different voices together and finding the unique combinations
-                    voices.append(voice)
-                    for i in range(len(inst_dict[str(self.voices[0])])): #*Take the length of the first voice as reference
+                    for i in range(min_voice_length): #*Take the length of the first voice as reference
                         event_str: str = ""
                         #*Traverse all voices for each event
                         try:
                             for voice in self.voices:
-                                event_str += str(inst_dict[str(voice)][i])
+                                event_str += str(voices_dict[voice][i])
                                 event_str += "&" #*join them using &
                             unique_events_str.add(event_str[:-1])
                         except IndexError:
@@ -62,16 +68,20 @@ class Instrument:
 
         # print(f"Unique events: {list(unique_events_str)} \n({len(unique_events_str)} / {len(voice)})")
         print(f"Number of unique events: {len(unique_events_str)}")
+        # import pdb; pdb.set_trace()
+        # print(unique_events_str)
 
         lst_unique_events_str = list(unique_events_str)
         tm: pd.DataFrame = pd.DataFrame(0, index=lst_unique_events_str, columns=lst_unique_events_str, dtype=float)
         #!For now, 1-order MC implemented
-        #*For the current event (src), check the next (dest) and increase (src, dest) by 1
-        for voice in voices:
-            for i in range(len(voice) - 1):
-                src: Event = voice[i]
-                dest: Event = voice[i+1]
-                tm.loc[str(src), str(dest)] += 1
+        #*For the current event's string (src), check the next (dest) and increase (src, dest) by 1
+        for i in range(min_voice_length - 1):
+            src: str = ""
+            dest: str = ""
+            for voice_key, voice_events in voices_dict.items():
+                src += str(voice_events[i]) + '&'
+                dest += str(voice_events[i+1]) + '&'
+            tm.loc[src[:-1], dest[:-1]] += 1
 
         #*Normalize (rows sum 1) and avoid division by zero
         transition_sums: pd.Series = tm.sum(axis=1)
@@ -82,13 +92,14 @@ class Instrument:
 
         # print(tm)
         self.tm = tm
+        # import pdb; pdb.set_trace()
     
         if output_file is not None:
             tm.to_csv(output_file)
 
         return tm
         
-    def compose(self, init_method: str = 'random', n_simulations: int = 50) -> list[Event]:
+    def compose(self, init_method: str = 'random', n_simulations: int = 50) -> list[list[Event]]:
         """
         From an initial configuration built from an initialization method
         (`init_method`), simulate the Instrument's Markov chain (`tm`). If `tm`
@@ -98,9 +109,13 @@ class Instrument:
             self.build_tm()
         #TODO: Implement a method that puts a 1 in a given event's string if present on unique_events
         if init_method == "random":
-            comp: list[Event] = [] #*Musical composition to return
+            comp: list[list[Event]] = [] #*Musical composition to return
             rand_num: int = random.randint(0, len(self.tm) - 1)
-            comp.append(Event.from_string(self.tm.index[rand_num]))
+            events_str: list[str] = [ev.strip() for ev in self.tm.index[rand_num].split('&')] #*divide by voices (staves) using their separator, &
+            events: list[Event] = []
+            for event_str in events_str:
+                events.append(Event.from_string(event_str))
+            comp.append(events)
         
             #*Build a mapping note -> notes to which it has a probability > 0
             #*to go to
@@ -109,9 +124,15 @@ class Instrument:
                 row: nonzero_mask.columns[nonzero_mask.loc[row]].to_numpy()
                 for row in nonzero_mask.index
             }
+            # print(note_mapping)
 
             for _ in range(n_simulations):
-                current_str: str = str(comp[-1])
+                current_str: str = ""
+                for event in comp[-1]:
+                    current_str += str(event) + "&"
+                    # print(current_str)
+                current_str = current_str[:-1]
+                # import pdb; pdb.set_trace()
                 successors = note_mapping[current_str]
                 if len(successors) == 0:
                     comp.append(comp[-1])
@@ -122,27 +143,87 @@ class Instrument:
                 # print("Current row")
                 # print(current_row)
                 sum_probas: float = 0 #*Cummulative transition probabilities
-                for i in range(0, n_successors + 1):
+                for i in range(0, n_successors):
                     #*TODO: Modify to use self's tm as in an updating function structure
                     sum_probas += current_row.loc[successors[i]]
                     # print("Sum of probas", sum_probas)
                     if rand_u < sum_probas:
                         i -= 1 #*explain in depth in the document (a.k.a., make the update function explicit)
-                        comp.append(Event.from_string(successors[i])) 
+                        # print(successors[i])
+                        events_str: list[str] = [ev.strip() for ev in successors[i].split('&')] #*divide by voices (staves) using their separator, &
+                        events: list[Event] = []
+                        for event_str in events_str:
+                            events.append(Event.from_string(event_str))
+                        comp.append(events)
                         break
 
             return comp
 
-    def to_midi(self, events: list[Event], output_path: str, tempo: int = None, velocity: int = 127) -> None:
+    def _event_duration_ticks(self, event: Event) -> int:
+        try:
+            return int(event.duration) if event.duration is not None else int(event.type * self.divisions)
+        except (TypeError, ValueError):
+            return int(event.type * self.divisions)
+
+    def _write_voice_track(self, events: list[Event], track: MidiTrack, channel: int, velocity: int) -> None:
+        pending_time = 0
+        for event in events:
+            event_duration = self._event_duration_ticks(event)
+            midi_notes = []
+            for note in event.notes:
+                midi_number = note.to_midi_number()
+                if midi_number is not None:
+                    midi_notes.append(midi_number)
+
+            if not midi_notes:
+                pending_time += event_duration
+                continue
+
+            first = True
+            for midi_note in midi_notes:
+                delta = pending_time if first else 0
+                track.append(Message('note_on', channel=channel, note=midi_note, velocity=velocity, time=delta))
+                first = False
+            pending_time = 0
+
+            first_off = True
+            for midi_note in midi_notes:
+                delta = event_duration if first_off else 0
+                track.append(Message('note_off', channel=channel, note=midi_note, velocity=0, time=delta))
+                first_off = False
+
+        if pending_time > 0:
+            track.append(MetaMessage('end_of_track', time=pending_time))
+        else:
+            track.append(MetaMessage('end_of_track', time=0))
+
+    #TODO: Document the code
+
+    def _resolve_instrument(self, name: str) -> tuple[int, bool]:
+        program = GM_PROGRAMS.get(name.lower())
+        if program is None:
+            raise ValueError(f"Unknown instrument '{name}'. Available options: {', '.join(sorted(GM_PROGRAMS.keys()))}")
+        return program
+
+    def to_midi(
+        self,
+        events: list[list[Event]] | list[Event],
+        output_path: str,
+        tempo: int = None,
+        velocity: int = 127,
+        instruments: list[str] | str | None = None,
+    ) -> None:
         """
-        Converts a list of events to a MIDI file with path `output_path` using
+        Converts a list of lists events to a MIDI file with path `output_path` using
         the provided `tempo`, `velocity` (volume, suggest to leave it at 127)
-        and the instance's `divisions`.
+        and the instance's `divisions`. You can optionally specify one instrument
+        name or a list of instrument names (per voice) using General MIDI labels.
 
         Parameters
         ----------
-        - events: list[Event]
-            List of events to parse to a MIDI file
+        - events: list[list[Event]]
+            List of lists of events (each representing an event in a voice)
+            to parse to a MIDI file
         - output_path: str
             The path to the output MIDI file (this method DOES NOT create
             parent directories).
@@ -150,60 +231,58 @@ class Instrument:
             The tempo of the MIDI track. Defaults to this instance's tempo
         - velocity: int, optional
             The volume of the MIDI track. Defaults to 127
+        - instruments: list[str] | str | None, optional
+            Instrument names for each voice. Use common names such as "piano",
+            "violin", "guitar", "flute", "drums", etc. Defaults to piano.
         """
         if not events:
             raise ValueError("No events supplied for MIDI export")
         if tempo is None:
             tempo = self.tempo
 
-        #*1) Creates a MIDI file and track (composition)
-        mid = MidiFile(ticks_per_beat=self.divisions) #*empty file
-        track = MidiTrack() #*actual composition (list of messages)
-        mid.tracks.append(track)
-        track.append(MetaMessage('set_tempo', tempo=bpm2tempo(tempo), time=0))
-
-        pending_time = 0
-        channel = 0
-
-        #*2) Add each event to the track as a message
-        for event in events:
-            #*In case an event has no durations, it is calculated based on its type and the track's divisions
-            try:
-                event_duration = int(event.duration) if event.duration is not None else int(event.type * self.divisions)
-            except (TypeError, ValueError):
-                event_duration = int(event.type * self.divisions)
-
-            #*Convert note(s) to MIDI number(s)
-            midi_notes = []
-            for note in event.notes:
-                midi_number = note.to_midi_number()
-                if midi_number is not None:
-                    midi_notes.append(midi_number)
-
-            #*If it is not a rest, just add a delta before the next note is played
-            if not midi_notes:
-                pending_time += event_duration
-                continue
-
-            first = True
-            for midi_note in midi_notes:
-                delta = pending_time if first else 0 #*wait for a rest in case there was one before
-                track.append(Message('note_on', channel=channel, note=midi_note, velocity=velocity, time=delta))
-                first = False #*in case it's a chord, all the notes will be played at the same time
-            pending_time = 0
-
-            first_off = True
-            for midi_note in midi_notes:
-                delta = event_duration if first_off else 0 #*play the note for event_duration time units
-                track.append(Message('note_off', channel=channel, note=midi_note, velocity=0, time=delta))
-                first_off = False #*just like previously, if it is a chord, play the rest simultaneously
-
-        if pending_time > 0:
-            track.append(MetaMessage('end_of_track', time=pending_time)) #*in case it ends in a rest
+        # Ensure events organized per voice
+        if isinstance(events[0], Event):
+            voice_sequences = [events]
         else:
-            track.append(MetaMessage('end_of_track', time=0))
+            num_voices = len(events[0])
+            voice_sequences = [[] for _ in range(num_voices)]
+            for timestep in events:
+                if len(timestep) != num_voices:
+                    raise ValueError("All time steps must contain the same number of voices")
+                for idx, event in enumerate(timestep):
+                    voice_sequences[idx].append(event)
 
-        #*3) Save MIDI file with events to output_path
+        # Resolve instrument list
+        if instruments is None:
+            instrument_names = ["piano"] * len(voice_sequences)
+        elif isinstance(instruments, str):
+            instrument_names = [instruments] * len(voice_sequences)
+        else:
+            if len(instruments) != len(voice_sequences):
+                raise ValueError("Number of instruments must match the number of voices")
+            instrument_names = instruments
+
+        mid = MidiFile(ticks_per_beat=self.divisions)
+        melodic_channel = 0
+        for channel, voice_events in enumerate(voice_sequences):
+            program, is_percussion = self._resolve_instrument(instrument_names[channel])
+            if is_percussion:
+                midi_channel = 9
+            else:
+                midi_channel = melodic_channel
+                if midi_channel == 9:
+                    midi_channel += 1
+                    melodic_channel = midi_channel
+                melodic_channel += 1
+
+            track = MidiTrack()
+            if channel == 0:
+                track.append(MetaMessage('set_tempo', tempo=bpm2tempo(tempo), time=0))
+            if not is_percussion:
+                track.append(Message('program_change', channel=midi_channel, program=program, time=0))
+            mid.tracks.append(track)
+            self._write_voice_track(voice_events, track, midi_channel, velocity)
+
         mid.save(output_path)
 
 
@@ -211,22 +290,24 @@ class Instrument:
 if __name__ == "__main__":
     from .parser import Parser
     #!Weird: when joining Claire de Lune with Happy Birthday, the output track, with 100 simulations, lasts 48 minutes with tempo 200
-    # parser: Parser = Parser("Data/Katyusha.mxl")
+    parser: Parser = Parser("Data/Katyusha.mxl")
     # parser: Parser = Parser("Data/Furelise-Beethoven.mxl")
-    parser: Parser = Parser("Data/Bella_Ciao_source.xml")
+    # parser: Parser = Parser("Data/Bella_Ciao_source.xml")
     # parser: Parser = Parser("Data/Gnossienne_No._1.mxl")
     # parser: Parser = Parser("Data/Ave_Maria_Schubert.mxl")
     # parser: Parser = Parser("Data/Clair_de_Lune_Debussy_source.xml")
-    parser2: Parser = Parser("Data/Gymnopdie_No.1_Satie_source.xml")
+    # parser: Parser = Parser("Data/Gymnopdie_No.1_Satie_source.xml")
     # parser: Parser = Parser("Data/Nocturne_in_E_flat_Major_Op.9_No.2_Easy_source.xml")
     # parser: Parser = Parser("Data/Happy_Birthday_To_You_source.xml")
+    # parser: Parser = Parser("Data/Whiplash-Caravan_by_B.F.mxl")
+    parser: Parser = Parser("Data/Katyusha_source_modified2.mxl")
     parsed_dict: dict = parser.parse_to_dict()
     print(parsed_dict.keys())
-    # piano: Instrument = Instrument([parsed_dict], voice=2)
-    piano: Instrument = Instrument([parsed_dict, parser2.parse_to_dict()], voices=[1])
+    piano: Instrument = Instrument([parsed_dict], voices=[1, 2])
+    # piano: Instrument = Instrument([parsed_dict, parser2.parse_to_dict()], voices=[1, 2])
     piano.build_tm()
     # print("Transition matrix")
     # print(piano.tm)
-    composition = piano.compose(n_simulations=100)
+    composition = piano.compose(n_simulations=50)
     print(composition)
-    piano.to_midi(composition, "output/test.mid", tempo=None)
+    piano.to_midi(composition, "output/test.mid", tempo=None, instruments=['accordion', 'bass'])
