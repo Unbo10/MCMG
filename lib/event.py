@@ -77,6 +77,9 @@ class Event:
 
         return cls(notes, (note_type, duration))
 
+    # def copy(self) -> "Event":
+    #     return Event([note.copy() for note in self.notes], (Fraction(self.type), self.duration))
+
 
 if __name__ == "__main__":
     #!Run (from root) as python -m lib.event

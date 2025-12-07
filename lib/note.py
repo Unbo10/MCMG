@@ -94,6 +94,15 @@ class Note:
         articulations = tuple(filter(None, articulation_part.split(','))) if articulation_part else tuple()
         return cls(clef, name, accidental, octave, articulations)
 
+    # def copy(self) -> "Note":
+    #     return Note(
+    #         clef=(self.clef[0], self.clef[1]),
+    #         name=self.name,
+    #         accidental=self.accidental,
+    #         octave=self.octave,
+    #         articulations=tuple(self.articulations) #*returns the original tuple or a shallow copy of it
+    #     )
+
     def to_midi_number(self) -> int | None:
         """
         Mapping from Note to the associated Midi's number.

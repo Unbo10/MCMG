@@ -9,14 +9,14 @@ from .event import Event
 A musical instrument based on an n-th Markov chain built using one or multiple musical pieces.
 """
 class Instrument:
-    def __init__(self, parsed_mxls: list[dict], mc_order: int = 1, name: str = 'piano1', multiple_voices: bool = False, voice: int = -1) -> None:
+    def __init__(self, parsed_mxls: list[dict], mc_order: int = 1, name: str = 'piano1', multiple_voices: bool = False, voices: list[int] = [1]) -> None:
         self.parsed_mxls: list[dict] = parsed_mxls
         self.mc_order: int = mc_order
         self.name: str = name
         self.tm: pd.DataFrame = pd.DataFrame() #*Transition matrix
         #*To build an 'independent' piano or a multi-voice piano
         self.multiple_voices: bool = multiple_voices
-        self.voice: int = voice
+        self.voices: int = voices
         #*Take the first parsed dict's number of divisions and tempo as a general rule for the instance
         self.divisions: int = parsed_mxls[0]['Info'][0]
         self.tempo: int = parsed_mxls[0]['Info'][1]
@@ -31,52 +31,62 @@ class Instrument:
         ----
         Since we are going through all the events twice (one for counting the unique events and another one to feed the transition matrix).
         """
-        if self.multiple_voices:
-            pass
-        else:
-            unique_events: set[str] = set()
-            voices: list[list[Event]] = []
-            #*Traverse through each instrument, each voice and each note to get the unique events
-            for parsed_dict in self.parsed_mxls:
-                for key, inst_dict in parsed_dict.items():
-                    if key != 'Info':
+        if len(self.voices) == 0:
+            raise ValueError("This instance's voice must be a list of at least one valid element, but it is empty")
+
+        unique_events_str: set[str] = set()
+        voices: list[list[Event]] = []
+        #*1)Traverse through each instrument, each voice and each event to get the unique events
+        for parsed_dict in self.parsed_mxls:
+            for key, inst_dict in parsed_dict.items():
+                if key != 'Info':
+                    for voice in self.voices:
                         try:
-                            voice: list[Event] = inst_dict[str(self.voice)]
+                            voice: list[Event] = inst_dict[str(voice)] #*get the list of events for each voice (staff)
                         except KeyError:
-                            print(f"Voice {voice} not in this parsed mxl's instrument keys: {list(inst_dict.keys())}. Skipping")
-                            continue
+                            print(f"Voice {voice} not in this parsed mxl's instrument keys: {list(inst_dict.keys())}. Aborting")
+                            return
 
-                        voices.append(voice)
-                        for event in voice:
-                            unique_events.add(str(event))
+                    #*1.1)Joining events from different voices together and finding the unique combinations
+                    voices.append(voice)
+                    for i in range(len(inst_dict[str(self.voices[0])])): #*Take the length of the first voice as reference
+                        event_str: str = ""
+                        #*Traverse all voices for each event
+                        try:
+                            for voice in self.voices:
+                                event_str += str(inst_dict[str(voice)][i])
+                                event_str += "&" #*join them using &
+                            unique_events_str.add(event_str[:-1])
+                        except IndexError:
+                            pass
 
-            print(f"Unique events: {list(unique_events)} \n({len(unique_events)} / {len(voice)})")
+        # print(f"Unique events: {list(unique_events_str)} \n({len(unique_events_str)} / {len(voice)})")
+        print(f"Number of unique events: {len(unique_events_str)}")
 
-            lst_unique_events = list(unique_events)
-            tm: pd.DataFrame = pd.DataFrame(0, index=lst_unique_events, columns=lst_unique_events, dtype=float)
-            #!For now, 1-order MC implemented
-            #*For the current event (src), check the next (dest) and increase (src, dest) by 1
-            for voice in voices:
-                for i in range(len(voice) - 1):
-                    src: Event = voice[i]
-                    dest: Event = voice[i+1]
-                    tm.loc[str(src), str(dest)] += 1
+        lst_unique_events_str = list(unique_events_str)
+        tm: pd.DataFrame = pd.DataFrame(0, index=lst_unique_events_str, columns=lst_unique_events_str, dtype=float)
+        #!For now, 1-order MC implemented
+        #*For the current event (src), check the next (dest) and increase (src, dest) by 1
+        for voice in voices:
+            for i in range(len(voice) - 1):
+                src: Event = voice[i]
+                dest: Event = voice[i+1]
+                tm.loc[str(src), str(dest)] += 1
 
-            #*Make sure all the rows sum 1
-            transition_sums: pd.Series = tm.sum(axis=1)
-            zero_rows = transition_sums == 0
-            tm.loc[zero_rows, :] = 1.0 #*assume no transition to another note means recurrent
-            #*Normalize (rows sum 1) and avoid division by zero
-            transition_sums: pd.Series = tm.sum(axis=1)
-            tm = tm.div(transition_sums, axis=0)
+        #*Normalize (rows sum 1) and avoid division by zero
+        transition_sums: pd.Series = tm.sum(axis=1)
+        zero_rows = transition_sums == 0
+        tm.loc[zero_rows, :] = 1.0 #*assume no transition to another note means recurrent
+        transition_sums: pd.Series = tm.sum(axis=1)
+        tm = tm.div(transition_sums, axis=0)
 
-            # print(tm)
-            self.tm = tm
-        
-            if output_file is not None:
-                tm.to_csv(output_file)
+        # print(tm)
+        self.tm = tm
+    
+        if output_file is not None:
+            tm.to_csv(output_file)
 
-            return tm
+        return tm
         
     def compose(self, init_method: str = 'random', n_simulations: int = 50) -> list[Event]:
         """
@@ -213,7 +223,7 @@ if __name__ == "__main__":
     parsed_dict: dict = parser.parse_to_dict()
     print(parsed_dict.keys())
     # piano: Instrument = Instrument([parsed_dict], voice=2)
-    piano: Instrument = Instrument([parsed_dict, parser2.parse_to_dict()], voice=2)
+    piano: Instrument = Instrument([parsed_dict, parser2.parse_to_dict()], voices=[1])
     piano.build_tm()
     # print("Transition matrix")
     # print(piano.tm)
