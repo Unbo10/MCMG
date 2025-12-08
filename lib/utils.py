@@ -8,6 +8,7 @@ GM_PROGRAMS = {
     "guitar": (24, False),
     "electric_guitar": (27, False),
     "bass": (32, False),
+    "slap_bass": (36, False),
     "violin": (40, False),
     "viola": (41, False),
     "cello": (42, False),
