@@ -5,6 +5,7 @@ from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo
 
 from .event import Event
 from .utils import GM_PROGRAMS
+from .parser import Parser
 
 """
 A musical instrument based on an n-th Markov chain built using one or multiple musical pieces.
@@ -319,31 +320,31 @@ class Instrument:
 
 #TODO: Create a constructor using a string
 if __name__ == "__main__":
-    from .parser import Parser
+    
     #!Weird: when joining Claire de Lune with Happy Birthday, the output track, with 100 simulations, lasts 48 minutes with tempo 200
     parser: Parser = Parser("Data/Katyusha.mxl")
     # parser: Parser = Parser("Data/Furelise-Beethoven.mxl")
-    parser: Parser = Parser("Data/Bella_Ciao_source.xml")
-    # parser: Parser = Parser("Data/Gnossienne_No._1.mxl")
+    # parser: Parser = Parser("Data/Bella_Ciao_source.xml")
+    parser: Parser = Parser("Data/Gnossienne_No._1.mxl")
     # parser: Parser = Parser("Data/Ave_Maria_Schubert.mxl")
     # parser2: Parser = Parser("Data/Clair_de_Lune_Debussy_source.xml")
-    # parser: Parser = Parser("Data/Gymnopdie_No.1_Satie_source.xml")
+    #parser2: Parser = Parser("Data/Gymnopdie_No.1_Satie_source.xml")
     # parser2: Parser = Parser("Data/Nocturne_in_E_flat_Major_Op.9_No.2_Easy_source.xml")
     # parser: Parser = Parser("Data/Happy_Birthday_To_You.mxl")
     # parser: Parser = Parser("Data/Whiplash-Caravan_by_B.F.mxl")
     # parser: Parser = Parser("Data/Katyusha_source_modified2.mxl")
     # parser: Parser = Parser("Data/Van_gogh.mxl")
     parsed_dict: dict = parser.parse_to_dict()
+    #parsed_dict2: dict = parser2.parse_to_dict()
     print(parsed_dict.keys())
     # print(parsed_dict['Piano']["1"][:5])
     # print(parsed_dict['Piano']["2"][:5])
-    piano: Instrument = Instrument([parsed_dict], voices=[1])
-    # piano: Instrument = Instrument([parsed_dict], voices=[1, 2])
+    piano: Instrument = Instrument([parsed_dict], voices=[1, 2])
     # piano: Instrument = Instrument([parsed_dict, parser2.parse_to_dict()], voices=[1, 2])
     piano.build_tm(order=3, save_path="tms/test.csv")
     # print("Transition matrix")
     # print(piano.tm)
-    composition = piano.compose(n_simulations=50)
+    composition = piano.compose(n_simulations=100)
     print(composition)
     # piano.to_midi(composition, "output/test.mid", tempo=200, instruments=['guitar', 'piano'])
     piano.to_midi(composition, "output/test.mid", tempo=200, instruments=['accordion'])
