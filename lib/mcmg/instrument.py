@@ -343,7 +343,7 @@ class Instrument:
         if tempo is None:
             tempo = self.tempo
 
-        # Ensure events organized per voice
+        # If we receive a single voice, wrap it so the loop treats all voices uniformly.
         if isinstance(events[0], Event):
             voice_sequences = [events]
         else:
@@ -355,7 +355,7 @@ class Instrument:
                 for idx, event in enumerate(timestep):
                     voice_sequences[idx].append(event)
 
-        # Resolve instrument list
+        # Normalize instrument names: single name applies to all voices, otherwise one per voice.
         if instruments is None:
             instrument_names = ["piano"] * len(voice_sequences)
         elif isinstance(instruments, str):
@@ -369,6 +369,7 @@ class Instrument:
         melodic_channel = 0
         for channel, voice_events in enumerate(voice_sequences):
             program, is_percussion = self._resolve_instrument(instrument_names[channel])
+            # Channel 9 (zero-based) is reserved for percussion.
             if is_percussion:
                 midi_channel = 9
             else:
@@ -380,8 +381,10 @@ class Instrument:
 
             track = MidiTrack()
             if channel == 0:
+                # Only write tempo on the first track.
                 track.append(MetaMessage('set_tempo', tempo=bpm2tempo(tempo), time=0))
             if not is_percussion:
+                # Program change selects the GM instrument for that voice.
                 track.append(Message('program_change', channel=midi_channel, program=program, time=0))
             mid.tracks.append(track)
             self._write_voice_track(voice_events, track, midi_channel, velocity)
