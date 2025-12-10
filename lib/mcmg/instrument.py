@@ -12,25 +12,51 @@ A musical instrument based on an n-th Markov chain built using one or multiple m
 """
 class Instrument:
     def __init__(self, parsed_mxls: list[dict], mc_order: int = 1, name: str = 'piano1', voices: list[int] = [1]) -> None:
+        """
+        Initialize an Instrument instance capable of building a Markov chain.
+
+        Parameters
+        ----------
+        parsed_mxls : list[dict]
+            Parsed scores (output from `Parser.parse_to_dict`).
+        mc_order : int, optional
+            Order (context length) of the chain. Defaults to 1.
+        name : str, optional
+            Identifier/name for this instrument. Defaults to 'piano1'.
+        voices : list[int], optional
+            Voices/staves to include. Defaults to [1].
+        """
         self.parsed_mxls: list[dict] = parsed_mxls
         self.mc_order: int = mc_order
         self.name: str = name
-        self.tm: pd.DataFrame = pd.DataFrame() #*Transition matrix
-        #*To build an 'independent' piano or a multi-voice piano
-        self.voices: int = voices
-        #*Take the first parsed dict's number of divisions and tempo as a general rule for the instance
+        self.tm: pd.DataFrame = pd.DataFrame()
+        self.voices: list[int] = voices
         self.divisions: int = parsed_mxls[0]['Info'][0]
         self.tempo: int = parsed_mxls[0]['Info'][1]
 
     def build_tm(self, order: int = 1, save_path: str = None, load_path: str = None) -> pd.DataFrame:
-        """ #TODO: Update docs
-        Build `tm` using `parsed_mxls`. It creates an (A1 x ... x An) x (A) matrix, where:
-        - If `multiple_voices` is True, Ai will be the set of number of voices-tuples (where each entry is an `mc_order`-tuple) contained in the ith element of `parsed_mxls` (the ith musical piece), and A will be the set of number of voices-tuples (where each entry is an `mc_order`-tuple) contained across any of the n `parsed_mxls`'s voices.
-        - Otherwise, Ai will be a tuple with a single `mc-order`-tuple obtained from the ith musical piece that should have a `voice` key (referring to the same voice across all pieces).
+        """
+        Build the transition matrix `tm`.
 
-        Note
-        ----
-        Since we are going through all the events twice (one for counting the unique events and another one to feed the transition matrix).
+        Parameters
+        ----------
+        order : int, optional
+            Context length (n-gram size). Defaults to 1.
+        save_path : str, optional
+            CSV path to save the matrix. Defaults to None.
+        load_path : str, optional
+            CSV path to load a precomputed matrix. Defaults to None.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Transition matrix of shape (states x states).
+
+        Notes
+        -----
+        Conceptually each state is the vector
+        $$s_i = \big((e_{i}^{(1)},\\ldots,e_{i}^{(k)}), (e_{i+1}^{(1)},\\ldots,e_{i+1}^{(k)}),\\ldots,(e_{i+\\text{order}-1}^{(1)},\\ldots,e_{i+\\text{order}-1}^{(k)})\\big)$$
+        where $k$ is the number of voices and $order$ is the context length. Rows/columns index states and successors $(s_i, e_{i+order})$.
         """
         if load_path is not None:
             self.tm = pd.read_csv(load_path, index_col=0)
@@ -117,13 +143,26 @@ class Instrument:
         
     def compose(self, init_method: str = 'random', n_simulations: int = 50, tm_save_path: str | None = None, tm_load_path: str | None = None) -> list[list[Event]]:
         """
-        From an initial configuration built from an initialization method
-        (`init_method`), simulate the Instrument's Markov chain (`tm`). If `tm`
-        is empty, `build_tm` is called before proceeding.
+        Simulate the Markov chain to obtain a new composition.
+
+        Parameters
+        ----------
+        init_method : str, optional
+            Initialization strategy (currently only 'random'). Defaults to 'random'.
+        n_simulations : int, optional
+            Number of transitions to sample. Defaults to 50.
+        tm_save_path : str, optional
+            Path to save `tm` if it needs to be built. Defaults to None.
+        tm_load_path : str, optional
+            Path to load a precomputed `tm`. Defaults to None.
+
+        Returns
+        -------
+        list[list[Event]]
+            Generated sequence grouped by voices.
         """
         if self.tm.empty:
             self.build_tm(save_path=tm_save_path, load_path=tm_load_path)
-        #TODO: Implement a method that puts a 1 in a given event's string if present on unique_events
         if init_method == "random":
             comp: list[list[Event]] = [] #*Musical composition to return
             rand_num: int = random.randint(0, len(self.tm.columns) - 1)
@@ -192,12 +231,39 @@ class Instrument:
             return comp
 
     def _event_duration_ticks(self, event: Event) -> int:
+        """
+        Convert an Event into ticks (based on MusicXML duration/type).
+
+        Parameters
+        ----------
+        event : Event
+            Event whose duration is to be measured.
+
+        Returns
+        -------
+        int
+            Duration in ticks relative to `self.divisions`.
+        """
         try:
             return int(event.duration) if event.duration is not None else int(event.type * self.divisions)
         except (TypeError, ValueError):
             return int(event.type * self.divisions)
 
     def _write_voice_track(self, events: list[Event], track: MidiTrack, channel: int, velocity: int) -> None:
+        """
+        Write a single voice's events to a MIDI track.
+
+        Parameters
+        ----------
+        events : list[Event]
+            Events to serialize.
+        track : MidiTrack
+            Target track to append messages.
+        channel : int
+            MIDI channel to use.
+        velocity : int
+            Velocity for note-on messages.
+        """
         pending_time = 0
         for event in events:
             event_duration = self._event_duration_ticks(event)
@@ -229,9 +295,20 @@ class Instrument:
         else:
             track.append(MetaMessage('end_of_track', time=0))
 
-    #TODO: Document the code
-
     def _resolve_instrument(self, name: str) -> tuple[int, bool]:
+        """
+        Map a user-friendly instrument name to (program, is_percussion).
+
+        Parameters
+        ----------
+        name : str
+            Name key as defined in `GM_PROGRAMS`.
+
+        Returns
+        -------
+        tuple[int, bool]
+            Program number and whether it is percussion (channel 10).
+        """
         program = GM_PROGRAMS.get(name.lower())
         if program is None:
             raise ValueError(f"Unknown instrument '{name}'. Available options: {', '.join(sorted(GM_PROGRAMS.keys()))}")
@@ -246,26 +323,20 @@ class Instrument:
         instruments: list[str] | str | None = None,
     ) -> None:
         """
-        Converts a list of lists events to a MIDI file with path `output_path` using
-        the provided `tempo`, `velocity` (volume, suggest to leave it at 127)
-        and the instance's `divisions`. You can optionally specify one instrument
-        name or a list of instrument names (per voice) using General MIDI labels.
+        Convert events into a MIDI file.
 
         Parameters
         ----------
-        - events: list[list[Event]]
-            List of lists of events (each representing an event in a voice)
-            to parse to a MIDI file
-        - output_path: str
-            The path to the output MIDI file (this method DOES NOT create
-            parent directories).
-        - tempo: int, optional
-            The tempo of the MIDI track. Defaults to this instance's tempo
-        - velocity: int, optional
-            The volume of the MIDI track. Defaults to 127
-        - instruments: list[str] | str | None, optional
-            Instrument names for each voice. Use common names such as "piano",
-            "violin", "guitar", "flute", "drums", etc. Defaults to piano.
+        events : list[list[Event]] | list[Event]
+            Either a single voice (list of events) or time steps grouped by voice.
+        output_path : str
+            Destination path for the MIDI file (directories must already exist).
+        tempo : int, optional
+            Tempo in BPM. Defaults to the instrument tempo.
+        velocity : int, optional
+            Note-on velocity (0-127). Defaults to 127.
+        instruments : list[str] | str | None, optional
+            General MIDI instrument names per voice. Defaults to piano for all.
         """
         if not events:
             raise ValueError("No events supplied for MIDI export")
@@ -318,7 +389,6 @@ class Instrument:
         mid.save(output_path)
 
 
-#TODO: Create a constructor using a string
 if __name__ == "__main__":
     
     #!Weird: when joining Claire de Lune with Happy Birthday, the output track, with 100 simulations, lasts 48 minutes with tempo 200

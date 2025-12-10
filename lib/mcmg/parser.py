@@ -96,8 +96,6 @@ class Parser:
         a list of `Event` instances, and each `Event` carries the one or many
         `Note` objects that sounded simultaneously plus their rhythmic info.
         """
-        #! The duration may not be necessary if we store the divisions tag from the attributes of each part
-        #TODO: Get tempo
         if self.score_file is None:
             self.mxl_to_xml()
         parsed_dict: dict = {}
@@ -112,7 +110,6 @@ class Parser:
             p_to_inst[part.get('id')] = part.find('part-name').text
 
         for pid, inst in p_to_inst.items():
-            #TODO: Consider the case when there are multiple instruments of the same type
             # if inst in parsed_dict.keys():
             #     inst += '1'
             parsed_dict[inst] = None #*create the dictionary of staves for each instrument
@@ -144,7 +141,6 @@ class Parser:
 
             clefs: dict = {}
 
-            #TODO: Document the rest of the code
             def build_note(note_element: ET.Element, staff_id: str) -> Note:
                 clef = clefs.get(staff_id)
                 # if clef is None:
@@ -172,7 +168,7 @@ class Parser:
 
                 return Note(clef, note_name, accidental, octave, articulations)
 
-            # TODO: join last event of a composition with the event from the following composition
+
             for measure in part.findall('measure'):
                 attributes = measure.find('attributes')
                 #*Update the cleff if a measure has a different one
@@ -210,31 +206,6 @@ class Parser:
 
                     staff_events.append(Event(note_list, (note_type, duration)))
                     i = j
-
-        # #*4) Add extra silences at the start of each voice to match their length
-        # max_staff_length: int = 0
-        # max_staff_length_id: str = ""
-
-        # # print(parsed_dict.keys())
-        # for inst, inst_dict in parsed_dict.items():
-        #     if inst != 'Info':
-        #         # print(type(inst_dict))
-        #         for staff, staff_events in inst_dict.items():
-        #             max_staff_length = max(max_staff_length, len(staff_events))
-        #             max_staff_length_id  = staff
-        #         print(max_staff_length_id)
-            
-        #         max_staff_list: list[Event] = inst_dict[max_staff_length_id]
-        #         for staff, staff_events in inst_dict.items():
-        #             for i in range(max_staff_length - len(staff_events)): #*if going through max, the difference will be 0
-        #                 ref: Event = max_staff_list[i] #*event for reference
-        #                 new_rest: Event = Event([Note(clef=tuple(ref.notes[0].clef),
-        #                                                 name='R',
-        #                                                 accidental='',
-        #                                                 octave='',
-        #                                                 articulations=())],
-        #                                         (Fraction(ref.type), ref.duration))
-        #                 staff_events.insert(0, new_rest)
                         
         return parsed_dict
     
@@ -245,6 +216,7 @@ if __name__ == "__main__":
     print(parser.score_file)
     parser.mxl_to_xml(save_container=False)
     lst = parser.parse_to_dict()
+    print(lst)
     print(lst['Piano']['1'][:5])
     print(lst['Piano']['2'][:5])
     # print("Parsed dict keys")

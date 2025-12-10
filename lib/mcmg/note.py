@@ -138,7 +138,6 @@ class Note:
         midi_number = (int(self.octave) + 1) * 12 + semitone #*add one to start from the 0th octave
         return midi_number
         
-#TODO: Create a constructor using a string
 if __name__ == "__main__":
     #!Run (from root) as python -m lib.note
     silence = Note(('F', 4), 'R', '', '', '')
