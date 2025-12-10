@@ -40,3 +40,4 @@ Generador de música basada en un número arbitrario de composiciones musicales 
 ## Referencias y bibliografía
 - https://www.researchgate.net/publication/353985934_Markov_Chains_for_Computer_Music_Generation (publicación guía)
 - https://musetrainer.github.io/library/ repositorio con partituras de piano de composiciones en formato *musicxml* (`.mxl`).
+- https://www.laguitarra-blog.com/wp-content/uploads/2011/12/Curso-Completo-Teoria-Musical1.pdf Curso de teoría musical guia para desarrollo de marco teórico.
