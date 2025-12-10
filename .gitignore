@@ -1,5 +1,6 @@
 #*Venvs
 .venv/
+.virt-env/
 
 #*xml and zip files in Data/
 Data/*.xml
@@ -24,3 +25,7 @@ dist/
 #*Ouput and transition matrices
 output/
 tms/
+
+#*Data
+*.mid
+*.xml
